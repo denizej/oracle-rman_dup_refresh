@@ -1,0 +1,1 @@
+-- alter user sys identified by &sys_pwd;

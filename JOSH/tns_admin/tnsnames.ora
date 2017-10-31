@@ -1,0 +1,49 @@
+LISTENER_JOSHC1 =
+  (ADDRESS = (PROTOCOL = TCP)(HOST = oel6-db-dev)(PORT = 1522))
+
+LISTENER_JOSHC2 =
+  (ADDRESS = (PROTOCOL = TCP)(HOST = oel6-db-dg)(PORT = 1522))
+
+LISTENER_JOSHC1SB =
+  (ADDRESS = (PROTOCOL = TCP)(HOST = oel6-db-dg)(PORT = 1523))
+
+LISTENER_JOSHC3 =
+  (ADDRESS = (PROTOCOL = TCP)(HOST = oel6-db-dg)(PORT = 1524))
+
+JOSHC1 =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(Host = oel6-db-dev)(Port = 1522))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = JOSHC1)
+    )
+  )
+
+JOSHC2 =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(Host = oel6-db-dg)(Port = 1522))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = JOSHC2)
+    )
+  )
+
+JOSHC1SB =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(Host = oel6-db-dg)(Port = 1523))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = JOSHC1SB)
+      #(SERVICE_NAME = JOSHC1)
+    )
+  )
+
+JOSHC3 =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(Host = oel6-db-dg)(Port = 1524))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = JOSHC3)
+    )
+  )
+

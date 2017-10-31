@@ -1,0 +1,10 @@
+*.control_files='/oradata/JOSHC2/cntrlJOSHC2_01.dbf','/redo/JOSHC2/cntrlJOSHC2_02.dbf'
+*.db_create_file_dest='/oradata/'
+*.db_create_online_log_dest_1='/redo/'
+*.db_create_online_log_dest_2='/oradata/'
+*.db_name='JOSHC2'
+*.db_recovery_file_dest='/backup/'
+*.db_recovery_file_dest_size=10G
+*.enable_pluggable_database=TRUE
+*.local_listener='LISTENER_JOSHC2'
+*.log_archive_dest_1='location=use_db_recovery_file_dest'

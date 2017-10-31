@@ -1,0 +1,1187 @@
+#!/usr/bin/bash
+
+
+function check_if_interactive(){
+# check if running in an interactive session or not
+fd=0
+INTERACTIVE=0
+if [[ -t "$fd" || -p /dev/stdin ]]; then
+  # this is interactive
+  INTERACTIVE=1
+else
+  echo -e "\n*** non-interactive session ***"
+fi
+} # function check_if_interactive
+
+
+function prompt_if_interactive(){
+# relies on the env variables INTERACTIVE be set accordingly
+NEXT_STEP=$1
+if [ $INTERACTIVE -gt 0 ]; then
+  echo
+  read -n 1 -p "Execute the next step: $NEXT_STEP (y/n)? " answer
+  case ${answer:0:1} in
+    y|Y )
+        echo -e "\nYes"
+        $NEXT_STEP
+    ;;
+    * )
+        echo -e "\nNo"
+        RETURN_STATUS=-1
+    ;;
+  esac
+else
+  echo NEXT_STEP = $NEXT_STEP
+  $NEXT_STEP
+fi
+} # function prompt_if_interactive
+
+function tnsping_SOURCE_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Pinging database $SOURCE_SID with TNS_ADMIN = $TNS_ADMIN ***"
+tnsping $SOURCE_SID
+
+RETURN_STATUS=$?
+
+} # function tnsping_SOURCE_DB
+
+
+function tnsping_DEST_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Pinging database $DEST_SID with TNS_ADMIN = $TNS_ADMIN ***"
+tnsping $DEST_SID
+
+RETURN_STATUS=$?
+
+} # function tnsping_DEST_DB
+
+
+function status_DEST_DB_LSNR(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+DEST_LSNR=LISTENER_${DEST_SID}
+
+if [ `ps -ef|grep tnslsnr|grep -ic ${DEST_LSNR}` -eq 0 ]; then 
+  echo -e "\nWARNING: did not find a listener running named like $DEST_LSNR"
+  RETURN_STATUS=1
+else
+  echo -e "\n*** Checking listener $DEST_LSNR ***"
+  lsnrctl status $DEST_LSNR
+  RETURN_STATUS=$?
+fi
+
+} # function status_DEST_DB_LSNR
+
+function restart_DEST_DB_LSNR(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+DEST_LSNR=LISTENER_${DEST_SID}
+
+if [ ! `ps -ef|grep tnslsnr|grep -ic ${DEST_LSNR}` -eq 0 ]; then
+  echo -e "\n*** Stopping listener $DEST_LSNR ***"
+  lsnrctl stop $DEST_LSNR
+fi
+
+echo -e "\n*** Starting listener $DEST_LSNR with TNS_ADMIN = $TNS_ADMIN ***"
+cp -p $ORACLE_HOME/network/admin/listener.ora $TNS_ADMIN > /dev/null 2>&1
+lsnrctl start $DEST_LSNR
+#lsnrctl status $DEST_LSNR
+tnsping $DEST_LSNR
+RETURN_STATUS=$?
+
+} # function status_DEST_DB_LSNR
+
+
+function sysdba_test_DEST_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Testing SYSDBA access to $DEST_SID ***"
+
+sqlplus -S -L / as sysdba << ESQL > $TEMP_LOG_FILE
+set time on
+show user
+show parameter db_name
+--select name,db_unique_name,open_mode,sysdate from v\$database;
+exit
+ESQL
+
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # sysdba_test_DEST_DB
+
+
+function sysbackup_test_DEST_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Testing SYSBACKUP access to $DEST_SID ***"
+
+sqlplus -S -L sysbackup/${SOURCE_DB_SYSBACKUP_PWD}@${DEST_SID} as sysbackup << ESQL > $TEMP_LOG_FILE
+set time on
+show user
+show parameter db_name
+--select name,db_unique_name,open_mode,sysdate from v\$database;
+exit
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # sysbackup_test_DEST_DB
+
+
+function sysdba_test_SOURCE_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Testing SYSDBA access to $SOURCE_SID ***"
+
+if [ -z $SOURCE_DB_SYSDBA_PWD ]; then
+  echo "ERROR: the password for the source database SYSDBA user is undefined, check file $SOURCE_DB_SYSDBA_PWD_FILE"
+  RETURN_STATUS=1
+else
+
+sqlplus -S -L sys/${SOURCE_DB_SYSDBA_PWD}@${SOURCE_SID} as sysdba << ESQL > $TEMP_LOG_FILE
+set time on
+show user
+show parameter db_unique_name
+select name,db_unique_name,open_mode,log_mode,database_role from v\$database;
+select HOST_NAME,INSTANCE_NAME,STATUS,INSTANCE_ROLE from v\$instance ;
+exit
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+fi
+
+} # sysdba_test_SOURCE_DB
+
+
+function sysbackup_test_SOURCE_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Testing SYSBACKUP access to $SOURCE_SID ***"
+
+sqlplus -S -L sysbackup/${SOURCE_DB_SYSBACKUP_PWD}@${SOURCE_SID} as sysbackup << ESQL > $TEMP_LOG_FILE
+set time on
+show user
+show parameter db_unique_name
+select name,db_unique_name,open_mode,log_mode,database_role from v\$database;
+select HOST_NAME,INSTANCE_NAME,STATUS,INSTANCE_ROLE from v\$instance ;
+exit
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # sysbackup_test_SOURCE_DB
+
+
+function drop_DEST_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Dropping database $DEST_SID ***"
+
+if [ -r $ORACLE_HOME/dbs/init${DEST_SID}.ora ]; then
+  echo -e "\nBacking up existing init${DEST_SID}.ora to $SYS_DIR/backups/init${DEST_SID}.ora_bak_$DATETIME"
+  cp -p $ORACLE_HOME/dbs/init${DEST_SID}.ora $SYS_DIR/backups/init${DEST_SID}.ora_bak_$DATETIME
+fi
+
+if [ -r $ORACLE_HOME/dbs/spfile${DEST_SID}.ora ]; then
+  echo -e "\nBacking up existing spfile${DEST_SID}.ora to $SYS_DIR/backups/spfile${DEST_SID}.ora_bak_$DATETIME"
+  cp -p $ORACLE_HOME/dbs/spfile${DEST_SID}.ora $SYS_DIR/backups/spfile${DEST_SID}.ora_bak_$DATETIME
+fi
+
+srvctl remove database -d $DEST_SID > /dev/null 2>&1
+
+sqlplus -S -L / as sysdba << ESQL > $TEMP_LOG_FILE
+set time on
+show user
+--select name,db_unique_name,open_mode,sysdate from v\$database;
+shutdown abort
+startup mount exclusive restrict
+drop database;
+-- shutdown abort
+exit
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+#RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+# ignore these ORA errors as the database is probably dropped already:
+# ORA-00205: error in identifying control file, check alert log for more info
+# ORA-01507: database not mounted
+RETURN_STATUS=`cat $TEMP_LOG_FILE | grep -v 'ORA-00205' | grep -c 'ORA-01507' | grep -c ^ORA\-`
+
+if [ ! -r $ORACLE_HOME/dbs/init${DEST_SID}.ora ]; then
+# this appears to be a new database that didn't exist before
+  echo "db_name=${DEST_SID}" > $ORACLE_HOME/dbs/init${DEST_SID}.ora
+  echo "db_file_name_convert='${SOURCE_SID},${DEST_SID}'" >> $ORACLE_HOME/dbs/init${DEST_SID}.ora
+  echo "log_file_name_convert='${SOURCE_SID},${DEST_SID}'" >> $ORACLE_HOME/dbs/init${DEST_SID}.ora
+  echo "job_queue_processes='0'" >> $ORACLE_HOME/dbs/init${DEST_SID}.ora
+fi
+
+if [ -r $SYS_DIR/backups/spfile${DEST_SID}.ora_bak_$DATETIME ]; then
+  cp -p $SYS_DIR/backups/spfile${DEST_SID}.ora_bak_$DATETIME $ORACLE_HOME/dbs/spfile${DEST_SID}.ora
+fi
+
+if [ $OSVER == "Linux" ]; then
+
+  if [ -d /apps/oracle/admin/${DEST_SID}/adump/ ]; then
+    echo -e "\nRemoving old OS audit file directory and contents"
+    rm -rf /apps/oracle/admin/${DEST_SID}/adump/
+  fi
+
+  if [ -d /oradata/${DEST_SID} ]; then
+    echo -e "\nRemoving old /oradata/${DEST_SID} directory and any contents"
+    rm -rf /oradata/${DEST_SID}/
+  fi
+
+  if [ -d /redo/${DEST_SID} ]; then
+    echo -e "\nRemoving old /redo/${DEST_SID} directory and any contents"
+    rm -rf /redo/${DEST_SID}/
+  fi
+
+  if [ -d /archive/${DEST_SID} ]; then
+    echo -e "\nRemoving old /archive/${DEST_SID} directory and any contents"
+    rm -rf /archive/${DEST_SID}/
+  fi
+
+  echo -e "\nCreating directory /apps/oracle/admin/${DEST_SID}/adump/"
+  mkdir -p /apps/oracle/admin/${DEST_SID}/adump/
+
+  echo -e "\nCreating directory /oradata/${DEST_SID} "
+  mkdir /oradata/${DEST_SID}/
+
+  echo -e "\nCreating directory /redo/${DEST_SID} "
+  mkdir /redo/${DEST_SID}/
+
+  echo -e "\nCreating directory /archive/${DEST_SID} "
+  mkdir /archive/${DEST_SID}/
+
+  if [ ! -d /backup/${DEST_SID} ]; then
+    echo -e "\nCreating directory /backup/${DEST_SID} "
+    mkdir /backup/${DEST_SID}/
+  fi
+
+  if [ ! -d /apps/oracle/admin/${DEST_SID}/adump/ ]; then
+    echo "ERROR: could not create directory /apps/oracle/admin/${DEST_SID}/adump/"
+    exit 1
+  fi
+
+  if [ ! -d /oradata/${DEST_SID}/ ]; then
+    echo "ERROR: could not create directory /oradata/${DEST_SID}/"
+    exit 1
+  fi
+  if [ ! -d /redo/${DEST_SID}/ ]; then
+    echo "ERROR: could not create directory /redo/${DEST_SID}/"
+    exit 1
+  fi
+  if [ ! -d /archive/${DEST_SID}/ ]; then
+    echo "ERROR: could not create directory /archive/${DEST_SID}/"
+    exit 1
+  fi
+  if [ ! -d /backup/${DEST_SID}/ ]; then
+    echo "ERROR: could not create directory /backup/${DEST_SID}/"
+    exit 1
+  fi
+
+else
+
+  if [ -d /local/apps/oracle/admin/${DEST_SID}/adump/ ]; then
+    echo -e "\nRemoving old OS audit file directory and contents"
+    rm -rf /apps/oracle/admin/${DEST_SID}/adump/
+    mkdir -p /local/apps/oracle/admin/${DEST_SID}/adump/
+  fi
+
+  if [ ! -d /local/apps/oracle/admin/${DEST_SID}/adump/ ]; then
+    echo "ERROR: could not create directory /local/apps/oracle/admin/${DEST_SID}/adump/"
+    exit 1
+  fi
+
+fi
+
+} # drop_DEST_DB
+
+
+function replace_orapw_file_DEST_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Replacing the Oracle database password file for $DEST_SID ***"
+
+DEST_DB_PWD_FILE=$ORACLE_HOME/dbs/orapw${DEST_SID}
+
+if [ -r $DEST_DB_PWD_FILE ]; then
+  cp -p $DEST_DB_PWD_FILE $SYS_DIR/backups/orapw${DEST_SID}_bak_$DATETIME
+fi
+
+if [ $ORAVER != "12c" ]; then
+  if [ -z $SOURCE_DB_SYSDBA_PWD ]; then
+    echo "ERROR: the password for the source database SYSDBA user is undefined, check file $SOURCE_DB_SYSDBA_PWD_FILE"
+    exit 1
+  else
+    orapwd file=$DEST_DB_PWD_FILE force=y password=$SOURCE_DB_SYSDBA_PWD
+  fi
+else
+  if [ -z $SOURCE_DB_SYSBACKUP_PWD ]; then
+    echo "ERROR: the password for the source database SYSBACKUP user is undefined, check file $SOURCE_DB_SYSBACKUP_PWD_FILE"
+    exit 1
+  else
+    orapwd file=$DEST_DB_PWD_FILE force=y sysbackup=y password=$SOURCE_DB_SYSBACKUP_PWD < $SOURCE_DB_SYSBACKUP_PWD_FILE > /dev/null
+  fi
+fi
+
+RETURN_STATUS=$?
+
+} # replace_orapw_file_DEST_DB
+
+
+function restart_nomount_DEST_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Restarting database instance $DEST_SID to nomount state ***"
+#echo TNS_ADMIN = $TNS_ADMIN
+
+sqlplus -S -L / as sysdba << ESQL > $TEMP_LOG_FILE
+show user
+shutdown abort
+startup nomount
+
+set lines 200
+--show parameter db_name
+--show parameter spfile
+select name||' = '||value "Database Name" from v\$parameter where name='db_name';
+--select name||' = '||value "Server Parameter File Path" from v\$parameter where name='spfile';
+--select name||' = '||value "Archive Log Destinations" from v\$parameter where regexp_like(name,'log_archive_dest_[0-9]+') and value is not null;
+select name||' = '||nvl(value,'NOT SET') "Archive Log Destinations" from v\$parameter where name like 'log_archive_dest__';
+select name||' = '||value "File Name Convert Parameters" from v\$parameter where name in ('db_file_name_convert','log_file_name_convert');
+select name||' = '||value "Job Scheduler Processes" from v\$parameter where name = 'job_queue_processes';
+select open_mode from v\$database;
+exit
+ESQL
+
+cat $TEMP_LOG_FILE
+#RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+#if [ `ps -ef|grep -c ora_pmon_${DEST_SID}$` -eq 0 ]; then
+if [ `grep -c ^'ORA-01507: database not mounted' $TEMP_LOG_FILE` -gt 0 ]; then
+  RETURN_STATUS=0
+else
+  RETURN_STATUS=1
+fi
+
+} # restart_nomount_DEST_DB
+
+
+function do_rman_dup_from_active_to_DEST_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Starting RMAN Duplication from active $SOURCE_SID to $DEST_SID ***"
+#echo TNS_ADMIN = $TNS_ADMIN
+
+rman trace=$RMAN_LOG_FILE << ERMAN
+
+connect target $RMAN_CONNECT_TARGET_STR ;
+connect auxiliary $RMAN_CONNECT_AUX_STR ;
+
+run {
+
+CONFIGURE DEVICE TYPE DISK PARALLELISM $RMAN_PARALLELISM ;
+
+duplicate target database to $DEST_SID
+from active database
+# NOTE: only uncomment the line below if required and the new DEST_DB (RMAN auxiliary) is on a host different to the SOURCE_DB (RMAN target)
+#nofilenamecheck
+;
+}
+
+exit;
+
+ERMAN
+
+RETURN_STATUS=$?
+
+} # do_rman_dup_from_active_to_DEST_DB
+
+
+function disable_archive_log_mode_DEST_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+
+echo -e "\n*** Disabling archive log mode in $DEST_SID ***"
+
+sqlplus -S -L / as sysdba << ESQL > $TEMP_LOG_FILE
+show user
+
+col LOG_MODE_BEFORE for a20
+col LOG_MODE_AFTER for a20
+
+select HOST_NAME,INSTANCE_NAME,STATUS,INSTANCE_ROLE from v\$instance ;
+select name,open_mode,database_role,log_mode LOG_MODE_BEFORE from v\$database;
+
+--alter system set db_recovery_file_dest="/backup/" scope=spfile;
+--alter system set db_recovery_file_dest_size="200G" scope=spfile;
+--alter system set log_archive_dest_1="location=use_db_recovery_file_dest" scope=spfile;
+
+--prompt Also disable the DBA Recyclebin while we are here
+--show parameter recyclebin
+--alter system set recyclebin="off" scope=spfile;
+
+shutdown immediate
+startup mount
+
+alter database noarchivelog;
+alter database open;
+
+select name,open_mode,database_role,log_mode LOG_MODE_AFTER from v\$database;
+
+exit
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # disable_archive_log_mode_DEST_DB
+
+
+function purge_recyclebin_DEST_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+
+echo -e "\n*** Purging the DBA recyclebin in $DEST_SID ***"
+
+sqlplus -S -L / as sysdba << ESQL > $TEMP_LOG_FILE
+show user
+
+prompt Purge the DBA Recyclebin 
+show parameter recyclebin
+purge dba_recyclebin;
+
+exit
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # purge_recyclebin_DEST_DB
+
+
+function disable_auto_maint_tasks_DEST_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+
+echo -e "\n*** Disabling the automated maintenance tasks in $DEST_SID ***"
+
+sqlplus -S -L / as sysdba << ESQL > $TEMP_LOG_FILE
+show user
+
+col client_name for a40
+col status_BEFORE for a12
+col status_AFTER for a12
+col attributes for a60
+
+select client_name, status status_BEFORE, attributes from dba_autotask_client;
+
+exec  DBMS_AUTO_TASK_ADMIN.disable( client_name => 'auto space advisor', operation   => NULL, window_name => NULL);
+exec  DBMS_AUTO_TASK_ADMIN.disable( client_name => 'sql tuning advisor', operation   => NULL, window_name => NULL);
+-- exec  DBMS_AUTO_TASK_ADMIN.disable( client_name => 'auto optimizer stats collection', operation   => NULL, window_name => NULL);
+
+select client_name, status status_AFTER, attributes from dba_autotask_client;
+
+exit
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # disable_auto_maint_tasks_DEST_DB
+
+
+function managed_recovery_SOURCE_DB_cancel(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Canceling managed recovery in $SOURCE_SID ***"
+
+sqlplus -S -L sysbackup/${SOURCE_DB_SYSBACKUP_PWD}@${SOURCE_SID} as sysbackup << ESQL > $TEMP_LOG_FILE
+set lines 120
+show user
+select HOST_NAME,INSTANCE_NAME,STATUS,INSTANCE_ROLE from v\$instance ;
+
+select PROCESS,STATUS,SEQUENCE# from  V\$MANAGED_STANDBY order by PROCESS,STATUS;
+
+ALTER DATABASE RECOVER MANAGED STANDBY DATABASE CANCEL;
+-- ALTER DATABASE RECOVER MANAGED STANDBY DATABASE DISCONNECT  NODELAY;
+
+select PROCESS,STATUS,SEQUENCE# from  V\$MANAGED_STANDBY order by PROCESS,STATUS;
+
+col MESSAGE for a80
+select TIMESTAMP,MESSAGE from V\$DATAGUARD_STATUS where MESSAGE_NUM > (select max(MESSAGE_NUM)-4 from V\$DATAGUARD_STATUS) order by TIMESTAMP;
+
+exit;
+
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # managed_recovery_SOURCE_DB_cancel
+
+function managed_recovery_SOURCE_DB_restart(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Restarting managed recovery in $SOURCE_SID ***"
+
+sqlplus -S -L sysbackup/${SOURCE_DB_SYSBACKUP_PWD}@${SOURCE_SID} as sysbackup << ESQL > $TEMP_LOG_FILE
+set lines 120
+show user
+select HOST_NAME,INSTANCE_NAME,STATUS,INSTANCE_ROLE from v\$instance ;
+
+select PROCESS,STATUS,SEQUENCE# from  V\$MANAGED_STANDBY order by PROCESS,STATUS;
+
+-- ALTER DATABASE RECOVER MANAGED STANDBY DATABASE CANCEL;
+ALTER DATABASE RECOVER MANAGED STANDBY DATABASE DISCONNECT  NODELAY;
+
+select PROCESS,STATUS,SEQUENCE# from  V\$MANAGED_STANDBY order by PROCESS,STATUS;
+
+col MESSAGE for a80
+select TIMESTAMP,MESSAGE from V\$DATAGUARD_STATUS where MESSAGE_NUM > (select max(MESSAGE_NUM)-4 from V\$DATAGUARD_STATUS) order by TIMESTAMP;
+
+exit;
+
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # managed_recovery_SOURCE_DB_restart
+
+
+function set_ADR_purge_policies_DEST_DB(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Settting the ADR purge polices for $DEST_SID database and listener ***"
+
+ADR_HOME_DB=`adrci exec="show home"|grep -i rdbms'/'${DEST_SID}'/'${DEST_SID}$`
+ADR_HOME_LSNR=`adrci exec="show home"|grep -i listener_${DEST_SID}$`
+
+#echo ADR_HOME_DB=$ADR_HOME_DB
+#echo ADR_HOME_LSNR=$ADR_HOME_LSNR
+
+adrci << EADR
+set home $ADR_HOME_DB
+show control
+set control (SHORTP_POLICY = $DEST_ADR_SHORTP_POLICY)
+set control (LONGP_POLICY = $DEST_ADR_LONGP_POLICY)
+purge
+show control
+
+set home $ADR_HOME_LSNR
+show control
+set control (SHORTP_POLICY = $DEST_ADR_SHORTP_POLICY)
+set control (LONGP_POLICY = $DEST_ADR_LONGP_POLICY)
+purge
+show control
+
+exit
+EADR
+
+RETURN_STATUS=$?
+
+} # set_ADR_purge_policies_DEST_DB
+
+
+function cleanup_unified_auditing_DEST_DB(){
+# purge unified auditing tables
+# disable the default policies
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv > /dev/null
+
+echo -e "\n*** Cleanup of unified auditing segments in the $DEST_SID database ***"
+
+sqlplus -S -L '/ as sysdba' <<ESQL > $TEMP_LOG_FILE
+
+col owner for a10
+col table_name for a10
+col tablespace_name for a20
+col segment_type for a20
+col segment_name for a12
+col mbytes for 999999.99
+col USER_NAME for a20
+col POLICY_NAME for a20
+
+set serveroutput on
+set feedback on
+set echo on
+
+prompt
+prompt The Unified Audit trail is in AUDSYS schema with segments in the SYSAUX tablespace
+select owner,tablespace_name,segment_type,sum(bytes/1024/1024) mbytes from dba_segments where owner='AUDSYS' group by owner,tablespace_name,segment_type order by 3;
+
+prompt
+prompt The Unified Audit trail option is not set by default
+SELECT VALUE "Unified Auditing option set" FROM V\$OPTION WHERE PARAMETER = 'Unified Auditing';
+
+prompt
+prompt However, by default 2 policies are enabled even if the Unified Audit trail option is not set
+select USER_NAME,POLICY_NAME from AUDIT_UNIFIED_ENABLED_POLICIES;
+
+prompt
+prompt Disable both policies
+NOAUDIT POLICY ORA_SECURECONFIG;
+NOAUDIT POLICY ORA_LOGON_FAILURES;
+prompt
+select USER_NAME,POLICY_NAME from AUDIT_UNIFIED_ENABLED_POLICIES;
+
+prompt
+prompt Purge the Unified Audit trail
+-- exec DBMS_AUDIT_MGMT.FLUSH_UNIFIED_AUDIT_TRAIL(container=>DBMS_AUDIT_MGMT.CONTAINER_ALL);
+exec DBMS_AUDIT_MGMT.CLEAN_AUDIT_TRAIL(audit_trail_type => DBMS_AUDIT_MGMT.AUDIT_TRAIL_UNIFIED, use_last_arch_timestamp => FALSE, container=>DBMS_AUDIT_MGMT.CONTAINER_ALL);
+
+prompt
+prompt Check if segment space usage has been reduced
+select owner,tablespace_name,segment_type,sum(bytes/1024/1024) mbytes from dba_segments where owner='AUDSYS' group by owner,tablespace_name,segment_type order by 3;
+
+exit;
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # function cleanup_unified_auditing_DEST_DB
+
+
+
+function cleanup_audit_tabs_DEST_DB(){
+# truncate audit tables and move to SYSAUX
+# DBMS_AUDIT_MGMT.INIT_CLEANUP
+# DBMS_AUDIT_MGMT.CLEAN_AUDIT_TRAIL
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv > /dev/null
+
+echo -e "\n*** Cleanup of audit tables SYS.AUD$ and SYS.FGA_LOG$ in the $DEST_SID database ***"
+
+sqlplus -S -L '/ as sysdba' <<ESQL > $TEMP_LOG_FILE
+
+col owner for a10
+col table_name for a10
+col tablespace_name for a20
+col segment_type for a20
+col segment_name for a12
+col mbytes for 999999.99
+col USER_NAME for a20
+col POLICY_NAME for a20
+
+set serveroutput on
+set feedback on
+set echo on
+
+prompt
+prompt Truncate and move database audit tables SYS.AUD$ and SYS.FGA_LOG$
+select owner,tablespace_name,segment_name table_name,bytes/1024/1024 mbytes from dba_segments where owner='SYS' and segment_name in ('AUD$','FGA_LOG$') order by 3;
+
+prompt truncate table SYS.AUD$;
+truncate table SYS.AUD$;
+
+prompt truncate table SYS.FGA_LOG$;
+truncate table SYS.FGA_LOG$;
+
+prompt
+prompt Execute DBMS_AUDIT_MGMT.INIT_CLEANUP which moves the tables to SYSAUX
+-- exec DBMS_AUDIT_MGMT.DEINIT_CLEANUP(audit_trail_type => DBMS_AUDIT_MGMT.AUDIT_TRAIL_ALL);
+-- exec DBMS_AUDIT_MGMT.INIT_CLEANUP(audit_trail_type => DBMS_AUDIT_MGMT.AUDIT_TRAIL_ALL, default_cleanup_interval => 24 /* hours */, container=>DBMS_AUDIT_MGMT.CONTAINER_ALL);
+
+BEGIN
+ IF
+   NOT DBMS_AUDIT_MGMT.IS_CLEANUP_INITIALIZED(DBMS_AUDIT_MGMT.AUDIT_TRAIL_ALL)
+ THEN
+   DBMS_AUDIT_MGMT.INIT_CLEANUP(
+      audit_trail_type          => DBMS_AUDIT_MGMT.AUDIT_TRAIL_ALL
+     ,default_cleanup_interval  => 24 /* hours */
+  -- ,container             => DBMS_AUDIT_MGMT.CONTAINER_ALL -- 12c only
+      );
+ END IF;
+END;
+/
+
+exec dbms_stats.gather_table_stats('SYS','AUD$');
+exec dbms_stats.gather_table_stats('SYS','FGA_LOG$');
+
+select owner,tablespace_name,segment_name table_name,bytes/1024/1024 mbytes from dba_segments where owner='SYS' and segment_name in ('AUD$','FGA_LOG$') order by 3;
+
+exit;
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # function cleanup_audit_tabs_DEST_DB
+
+
+function drop_standby_redo_logs_DEST_DB(){
+# drop any standby log files in the DEST_SID database
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv > /dev/null
+
+echo -e "\n*** Dropping any standby redo log files in $DEST_SID database ***"
+
+sqlplus -S -L '/ as sysdba' << ESQL > $TEMP_LOG_FILE
+set feedback on
+set serveroutput on
+set lines 120
+set pages 100
+col MEMBER for a50
+col TYPE for a20
+set echo on
+
+prompt
+--prompt *** Dropping standby redo logs ***
+
+select MEMBER,TYPE from v\$logfile;
+
+begin
+for c in ( select * from v\$logfile where type = 'STANDBY') loop
+    execute immediate 'ALTER DATABASE DROP LOGFILE GROUP ' || c.group#;
+    dbms_output.put_line('ALTER DATABASE DROP LOGFILE GROUP ' || c.group# ); -- record output
+end loop;
+end;
+/
+
+select MEMBER,TYPE from v\$logfile;
+
+exit;
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # drop_standby_redo_logs_DEST_DB
+
+
+function delete_all_archivelogs_DEST_DB(){
+# delete all archivelogs for DEST_SID database
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Deleting all archivelogs for $DEST_SID database ***"
+
+rman target / nocatalog << ERMAN
+
+delete force noprompt archivelog all;
+
+exit;
+ERMAN
+
+RETURN_STATUS=$?
+} # function delete_all_archivelogs_DEST_DB
+
+
+function reset_RMAN_config_DEST_DB(){
+# reset RMAN configuration in DEST_SID database
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+echo -e "\n*** Resetting RMAN configuration for $DEST_SID database ***"
+
+rman target / nocatalog << ERMAN
+show all;
+CONFIGURE CONTROLFILE AUTOBACKUP clear;
+CONFIGURE DEFAULT DEVICE TYPE clear;
+CONFIGURE CONTROLFILE AUTOBACKUP clear;
+CONFIGURE CONTROLFILE AUTOBACKUP FORMAT FOR DEVICE TYPE DISK clear;
+CONFIGURE RETENTION POLICY clear;
+CONFIGURE BACKUP OPTIMIZATION clear;
+CONFIGURE ARCHIVELOG DELETION POLICY clear;
+CONFIGURE SNAPSHOT CONTROLFILE NAME clear;
+CONFIGURE DEVICE TYPE DISK clear;
+#show all;
+exit;
+ERMAN
+
+RETURN_STATUS=$?
+
+} # function reset_RMAN_config_DEST_DB
+
+
+
+function recreate_DB_dirs_DEST_DB(){
+# recreate any database directories that mention the SOURCE_SID in DEST_DB
+echo -e "\n*** Recreating any database directories that have $SOURCE_SID in the path ***"
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv > /dev/null
+
+sqlplus -S -L '/ as sysdba' << ESQL > $TEMP_LOG_FILE
+set verify off
+set feedback on
+set linesize 200
+set echo on
+set heading on
+-- recreate directories
+prompt *** Recreate directories ***
+define SOURCE_SID = $SOURCE_SID
+define DEST_SID = $DEST_SID
+set serveroutput on
+col OWNER for a30
+col DIRECTORY_NAME for a30
+col DIRECTORY_PATH for a60
+col DIRECTORY_PATH_BEFORE for a60
+col DIRECTORY_PATH_AFTER for a60
+select OWNER,DIRECTORY_NAME,DIRECTORY_PATH DIRECTORY_PATH_BEFORE from dba_directories where DIRECTORY_PATH like '%&SOURCE_SID%' order by OWNER,DIRECTORY_NAME;
+declare
+l_sql varchar2(4000);
+begin
+-- note lowercase for directory paths
+for c in ( select * from dba_directories )
+loop
+l_sql := 'create or replace directory ' || c.directory_name || ' as ''' || replace(c.directory_path,'&SOURCE_SID','&DEST_SID') ||'''';
+--dbms_output.put_line( l_sql);
+execute immediate l_sql;
+end loop;
+end;
+/
+--select OWNER,DIRECTORY_NAME,DIRECTORY_PATH from dba_directories order by OWNER,DIRECTORY_NAME;
+--select OWNER,DIRECTORY_NAME,DIRECTORY_PATH DIRECTORY_PATH_AFTER from dba_directories where DIRECTORY_PATH like '%&SOURCE_SID%' order by OWNER,DIRECTORY_NAME;
+select OWNER,DIRECTORY_NAME,DIRECTORY_PATH DIRECTORY_PATH_AFTER from dba_directories where DIRECTORY_PATH like '%&DEST_SID%' order by OWNER,DIRECTORY_NAME;
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # recreate_DB_dirs_DEST_DB
+
+
+function recreate_DB_dir_DATA_PUMP_DIR_DEST_DB(){
+# recreate the DATA_PUMP_DIR database directory 
+echo -e "\n*** Recreate the DATA_PUMP_DIR database directory"
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv > /dev/null
+
+sqlplus -s -L '/ as sysdba' << ESQL > $TEMP_LOG_FILE
+set verify off
+set feedback on
+set echo on
+set heading on
+define DEST_SID = $DEST_SID
+col OWNER for a10
+col DIRECTORY_NAME for a20
+col DIRECTORY_PATH for a60
+col DIRECTORY_PATH_BEFORE for a60
+col DIRECTORY_PATH_AFTER for a60
+select OWNER,DIRECTORY_NAME,DIRECTORY_PATH DIRECTORY_PATH_BEFORE from dba_directories where DIRECTORY_NAME='DATA_PUMP_DIR';
+create or replace directory DATA_PUMP_DIR as '/apps/oracle/admin/&DEST_SID/dpdump/';
+select OWNER,DIRECTORY_NAME,DIRECTORY_PATH DIRECTORY_PATH_AFTER from dba_directories where DIRECTORY_NAME='DATA_PUMP_DIR';
+exit;
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # recreate_DB_dir_DATA_PUMP_DIR_DEST_DB
+
+
+function execute_post_DB_refresh_script(){
+# run post database refresh script
+echo -e "\n*** Executing the post database refresh scripts in directory $POST_DB_REFRESH_SCRIPT_DIR ***"
+echo -e "\n*** Log file: $POST_DB_REFRESH_SCRIPT_LOG_FILE ***"
+echo
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv > /dev/null
+
+sqlplus -L '/ as sysdba' << ESQL > $POST_DB_REFRESH_SCRIPT_LOG_FILE 2>&1
+set feedback off
+set echo off
+set verify off
+
+-- 
+define SCRIPT_DIR = $POST_DB_REFRESH_SCRIPT_DIR
+define SYSTEM = $SYSTEM
+define SOURCE_SID = $SOURCE_SID
+define DEST_SID = $DEST_SID
+define DEST_ENV = $DEST_ENV
+
+-- define new variable LOWER_ENV from lowercase of DEST_ENV
+COLUMN p_LOWER_ENV    NEW_VALUE LOWER_ENV
+select lower('&DEST_ENV') p_LOWER_ENV from dual;
+
+-- read in the variable DEFINITIONS for the DEST_SID 
+@$POST_DB_REFRESH_SCRIPT_DEF_FILE
+
+set echo on
+set feedback on
+set serveroutput on
+
+prompt *** Executing post-refresh database scripts ***
+
+-- execute the main SQL script for the SYSTEM
+@$POST_DB_REFRESH_SCRIPT_SQL_FILE
+
+exit;
+ESQL
+
+#RETURN_STATUS=$?
+cat $POST_DB_REFRESH_SCRIPT_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $POST_DB_REFRESH_SCRIPT_LOG_FILE`
+
+} # function execute_post_DB_refresh_script
+
+
+function disable_all_non_system_scheduler_jobs_DEST_DB(){
+# run disable all non system DBMS scheduler jobs
+echo -e "\n*** Disabling all non system DBMS scheduler jobs ***"
+echo
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv > /dev/null
+
+sqlplus -S -L '/ as sysdba' << ESQL > $TEMP_LOG_FILE
+
+set lines 200
+set pages 100
+
+col owner for a30
+col JOB_NAME for a30
+col JOB_CREATOR for a30
+col ENABLED for a10
+col ENABLED_BEFORE for a20
+col ENABLED_AFTER for a20
+
+select owner,JOB_NAME,JOB_CREATOR,ENABLED ENABLED_BEFORE from DBA_SCHEDULER_JOBS where owner not in ('SYS','SYSTEM') order by owner,JOB_NAME;
+
+BEGIN
+  FOR c IN
+    ( select c.OWNER,c.JOB_CREATOR,c.JOB_NAME from DBA_SCHEDULER_JOBS c where c.OWNER not in ('SYS','SYSTEM') and ENABLED='TRUE' )
+  LOOP
+    BEGIN
+      execute immediate 'alter session set current_schema='||c.JOB_CREATOR;
+      dbms_scheduler.disable(name=>c.OWNER||'.'||c.JOB_NAME,force=>true);
+    END;
+  END LOOP;
+END;
+/
+
+select owner,JOB_NAME,JOB_CREATOR,ENABLED ENABLED_AFTER from DBA_SCHEDULER_JOBS where owner not in ('SYS','SYSTEM') order by owner,JOB_NAME;
+
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # disable_all_non_system_scheduler_jobs_DEST_DB
+
+
+function break_all_non_system_db_jobs_DEST_DB(){
+# break all non system database jobs
+echo -e "\n*** Breaking all non system database jobs ***"
+echo
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv > /dev/null
+
+sqlplus -S -L '/ as sysdba' << ESQL > $TEMP_LOG_FILE
+
+set lines 200
+set pages 100
+
+col LOG_USER for a30
+col BROKEN for a6
+col COUNT_BEFORE for 999999999999
+col COUNT_AFTER for 999999999999
+
+--select JOB,LOG_USER,LAST_DATE,BROKEN from dba_jobs;
+select LOG_USER,BROKEN,count(*) COUNT_BEFORE from dba_jobs group by LOG_USER,BROKEN order by BROKEN,LOG_USER;
+
+BEGIN
+  FOR c IN
+    ( select c.JOB from dba_jobs c )
+  LOOP
+    --dbms_ijob.remove(c.JOB);
+    dbms_ijob.broken(c.JOB,TRUE);
+  END LOOP;
+END;
+/
+
+--select JOB,LOG_USER,LAST_DATE,BROKEN from dba_jobs;
+select LOG_USER,BROKEN,count(*) COUNT_AFTER from dba_jobs group by LOG_USER,BROKEN order by BROKEN,LOG_USER;
+
+ESQL
+
+#RETURN_STATUS=$?
+cat $TEMP_LOG_FILE
+RETURN_STATUS=`grep -c ^ORA\- $TEMP_LOG_FILE`
+
+} # break_all_non_system_db_jobs_DEST_DB
+
+
+function start_oem_blackouts_DEST_DB(){
+#
+if [ ! -z $OEMTARGET_DATABASE ]; then
+  echo -e "\n*** Starting OEM blackout for database $DEST_SID"
+  OEMTARGET_LIST="$OEMTARGET_DATABASE:oracle_database"
+  #emctl start blackout ${SCRIPT_NAME}_${DEST_SID} $EMTARGET_DATABASE:oracle_database
+  #RETURN_STATUS=$?
+else
+  echo -e "\n*** No OEM target exists for database $DEST_SID"
+  RETURN_STATUS=1
+fi
+
+if [ ! -z $OEMTARGET_LISTENER ]; then
+  echo -e "\n*** Starting OEM blackout for database listener $DEST_LSNR"
+  OEMTARGET_LIST="$OEMTARGET_LIST $OEMTARGET_LISTENER:oracle_listener"
+  #emctl start blackout ${SCRIPT_NAME}_${DEST_LSNR} $EMTARGET_LISTENER:oracle_listener
+  #RETURN_STATUS=$?
+else
+  echo -e "\n*** No OEM target exists for database listener $DEST_LSNR"
+  RETURN_STATUS=1
+fi
+
+#if [ `echo $OEMTARGET_LIST` != "" ]; then
+if [[ ! -z $OEMTARGET_LIST ]]; then
+  #echo -e "\nOEMTARGET_LIST = $OEMTARGET_LIST"
+  emctl start blackout ${SCRIPT_NAME}_${DEST_SID} $OEMTARGET_LIST
+  RETURN_STATUS=$?
+  emctl status blackout
+else
+  #echo -e "\nOEMTARGET_LIST = $OEMTARGET_LIST"
+  RETURN_STATUS=1
+fi
+
+} # start_oem_blackou_DEST_DBt
+
+
+function stop_oem_blackouts_DEST_DB(){
+#
+if [ ! -z $OEMTARGET_DATABASE ] && [ ! -z $OEMTARGET_LISTENER ]; then
+  echo -e "\n*** Stopping OEM blackout for database $DEST_SID"
+  emctl stop blackout ${SCRIPT_NAME}_${DEST_SID}
+  RETURN_STATUS=$?
+  emctl status blackout
+else
+  echo -e "\n*** No OEM target exists for database $DEST_SID or its listener"
+  RETURN_STATUS=1
+  emctl status blackout
+fi
+
+} # stop_oem_blackou_DEST_DBt
+
+
+
+function log_return_status_pass_warning(){
+#
+if [ $RETURN_STATUS -eq 0 ]; then
+  RESULT=PASSED
+  echo "`date +'%Y-%m-%d %H:%M:%S'` - $RESULT  - $NEXT_STEP" >> $RESULTS_LOG_FILE
+elif [ $RETURN_STATUS -lt 0 ]; then
+  RESULT=SKIPPED
+  echo "`date +'%Y-%m-%d %H:%M:%S'` + $RESULT + $NEXT_STEP" >> $RESULTS_LOG_FILE
+else
+  RESULT=WARNING
+  echo "`date +'%Y-%m-%d %H:%M:%S'` * $RESULT * $NEXT_STEP * RETURN_STATUS $RETURN_STATUS *" >> $RESULTS_LOG_FILE
+fi
+echo -e "*** $RESULT ***"
+}
+
+function log_return_status_pass_fail(){
+#
+if [ $RETURN_STATUS -eq 0 ]; then
+  RESULT=PASSED
+  echo "`date +'%Y-%m-%d %H:%M:%S'` - $RESULT  - $NEXT_STEP" >> $RESULTS_LOG_FILE
+elif [ $RETURN_STATUS -lt 0 ]; then
+  RESULT=SKIPPED
+  echo "`date +'%Y-%m-%d %H:%M:%S'` + $RESULT + $NEXT_STEP" >> $RESULTS_LOG_FILE
+else
+  RESULT=FAILED
+  echo "`date +'%Y-%m-%d %H:%M:%S'` * $RESULT * $NEXT_STEP * RETURN_STATUS $RETURN_STATUS *" >> $RESULTS_LOG_FILE
+fi
+echo -e "\n*** $RESULT ***"
+}
+
+function check_return_status_pass_fail(){
+#
+if [ $RETURN_STATUS -gt 0 ]; then
+  echo -e "\n`date` - $SCRIPT_NAME abended at step: $NEXT_STEP"
+  echo -e "`date` - check log file: $MAIN_LOG_FILE"
+  send_email
+  rm $TEMP_LOG_FILE > /dev/null 2>&1
+  exit $RETURN_STATUS
+fi
+RETURN_STATUS=0
+}
+
+function send_email(){
+#
+if [ "$RESULT" == "FAILED" ]; then
+  SUBJECT="$SCRIPT_NAME database clone $SOURCE_SID to $DEST_SID terminated abnormally"
+elif [ `grep -c '* WARNING *' $RESULTS_LOG_FILE` -gt 0 ]; then
+  SUBJECT="$SCRIPT_NAME database clone $SOURCE_SID to $DEST_SID completed with one or more warnings"
+else
+  SUBJECT="$SCRIPT_NAME database clone $SOURCE_SID to $DEST_SID completed successfully"
+fi
+
+if [ "$OSVER" == "SunOS" ]; then
+  (cat $RESULTS_LOG_FILE; uuencode $MAIN_LOG_FILE `basename $MAIN_LOG_FILE`) | mailx -s "$SUBJECT - results summary with main log file attached" $EMAIL_ADDRESS_LIST
+  #uuencode $MAIN_LOG_FILE `basename $MAIN_LOG_FILE` | mailx -s "$SUBJECT - main log file" $EMAIL_ADDRESS_LIST
+else
+  cat $RESULTS_LOG_FILE | mailx -s "$SUBJECT - results summary with main log file attached" -a $MAIN_LOG_FILE $EMAIL_ADDRESS_LIST
+fi
+
+}
+

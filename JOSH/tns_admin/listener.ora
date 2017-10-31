@@ -1,0 +1,18 @@
+LISTENER_JOSHC2 =
+  (DESCRIPTION_LIST =
+    (DESCRIPTION =
+      (ADDRESS = (PROTOCOL = TCP)(HOST = oel6-db-dg)(PORT = 1522))
+    )
+  )
+
+
+SID_LIST_LISTENER_JOSHC2 =
+  (SID_LIST =
+    (SID_DESC =
+      (GLOBAL_DBNAME = JOSHC2)
+      (ORACLE_HOME = /apps/oracle/product/12.1.0.2/dbhome_1)
+      (SID_NAME = JOSHC2)
+    )
+  )
+
+

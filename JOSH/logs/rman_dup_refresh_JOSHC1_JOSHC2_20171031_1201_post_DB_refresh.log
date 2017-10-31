@@ -1,0 +1,45 @@
+
+SQL*Plus: Release 12.1.0.2.0 Production on Tue Oct 31 12:05:38 2017
+
+Copyright (c) 1982, 2014, Oracle.  All rights reserved.
+
+
+Connected to:
+Oracle Database 12c Enterprise Edition Release 12.1.0.2.0 - 64bit Production
+With the Partitioning, OLAP, Advanced Analytics and Real Application Testing options
+
+12:05:38 SYS@JOSHC2> 
+12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 
+P_
+--
+c2
+Elapsed: 00:00:00.00
+12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> *** Executing post-refresh database scripts ***
+12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> set heading on
+12:05:38 SYS@JOSHC2> set verify off
+12:05:38 SYS@JOSHC2> set timing off
+12:05:38 SYS@JOSHC2> set feedback on
+12:05:38 SYS@JOSHC2> set serveroutput on
+12:05:38 SYS@JOSHC2> set echo on
+12:05:38 SYS@JOSHC2> 
+12:05:38 SYS@JOSHC2> whenever sqlerror CONTINUE
+12:05:38 SYS@JOSHC2> 
+12:05:38 SYS@JOSHC2> select '&SCRIPT_DIR'  "Post Refresh Script Dir" from dual;
+
+Post Refresh Script Dir
+-------------------------------------------------------
+/home/oracle/josh/rman_dup_refresh/JOSH/post_DB_refresh
+
+1 row selected.
+
+12:05:38 SYS@JOSHC2> 
+12:05:38 SYS@JOSHC2> define SCRIPT1='&DEST_SID._script1.sql'
+12:05:38 SYS@JOSHC2> define SCRIPT2='&DEST_SID._script2.sql'
+12:05:38 SYS@JOSHC2> 
+12:05:38 SYS@JOSHC2> @&SCRIPT_DIR/&SCRIPT1
+12:05:38 SYS@JOSHC2> -- alter user sys identified by &sys_pwd;
+12:05:38 SYS@JOSHC2> @&SCRIPT_DIR/&SCRIPT2
+12:05:38 SYS@JOSHC2> -- select sysdate from dual;
+12:05:38 SYS@JOSHC2> 
+12:05:38 SYS@JOSHC2> 12:05:38 SYS@JOSHC2> Disconnected from Oracle Database 12c Enterprise Edition Release 12.1.0.2.0 - 64bit Production
+With the Partitioning, OLAP, Advanced Analytics and Real Application Testing options
