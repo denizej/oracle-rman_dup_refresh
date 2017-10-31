@@ -2,17 +2,17 @@
 
 USAGE="
 USAGE: `basename $0` <SYSTEM> <SOURCE_ENV> <DEST_ENV> [FUNCTION_TO_EXEC]\n
-EG: - `basename $0` ban stby p2\n
-OR: - `basename $0` ban prod pprd\n
-OR: - `basename $0` ban stby dev list_all_functions\n
+EG: - `basename $0` josh c1 c2\n
+OR: - `basename $0` josh c2 c3\n
+OR: - `basename $0` josh c2 c3 list_all_functions\n
 "
 
 
 if [ $# -lt 3 ]; then
   echo "ERROR: incorrect usage"
   echo -e $USAGE
-  #echo "  USAGE: `basename $0` <SYSTEM> <SOURCE_ENV> <DEST_ENV>"
-  #echo "example: `basename $0` ban prod pprd"
+  #echo "  USAGE: `basename $0` <SYSTEM> <SOURCE_ENV> <DEST_ENV> [FUNCTION_TO_EXEC]"
+  #echo "example: `basename $0` josh c1 c2"
   exit 1
 fi
 
