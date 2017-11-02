@@ -1177,8 +1177,9 @@ else
 fi
 
 if [ "$OSVER" == "SunOS" ]; then
-  (cat $RESULTS_LOG_FILE; uuencode $MAIN_LOG_FILE `basename $MAIN_LOG_FILE`) | mailx -s "$SUBJECT - results summary with main log file attached" $EMAIL_ADDRESS_LIST
-  #uuencode $MAIN_LOG_FILE `basename $MAIN_LOG_FILE` | mailx -s "$SUBJECT - main log file" $EMAIL_ADDRESS_LIST
+  unix2dos $MAIN_LOG_FILE $MAIN_LOG_FILE
+  (cat $RESULTS_LOG_FILE; uuencode $MAIN_LOG_FILE `basename $MAIN_LOG_FILE`) | mailx -s "$SUBJECT - results summary with main log file attached" $EMAIL_ADDRESS_LIST  
+  dos2unix $MAIN_LOG_FILE $MAIN_LOG_FILE
 else
   cat $RESULTS_LOG_FILE | mailx -s "$SUBJECT - results summary with main log file attached" -a $MAIN_LOG_FILE $EMAIL_ADDRESS_LIST
 fi
