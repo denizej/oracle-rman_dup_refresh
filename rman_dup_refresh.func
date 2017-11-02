@@ -607,13 +607,13 @@ export ORACLE_SID=$DEST_SID
 
 echo -e "\n*** Settting the ADR purge polices for $DEST_SID database and listener ***"
 
-ADR_HOME_DB=`adrci exec="show home"|grep -i rdbms'/'${DEST_SID}'/'${DEST_SID}$`
-ADR_HOME_LSNR=`adrci exec="show home"|grep -i listener_${DEST_SID}$`
+ADR_HOME_DB=`$ORACLE_HOME/bin/adrci exec="show home"|grep -i rdbms'/'${DEST_SID}'/'${DEST_SID}$`
+ADR_HOME_LSNR=`$ORACLE_HOME/bin/adrci exec="show home"|grep -i listener_${DEST_SID}$`
 
 #echo ADR_HOME_DB=$ADR_HOME_DB
 #echo ADR_HOME_LSNR=$ADR_HOME_LSNR
 
-adrci << EADR
+$ORACLE_HOME/bin/adrci << EADR
 set home $ADR_HOME_DB
 show control
 set control (SHORTP_POLICY = $DEST_ADR_SHORTP_POLICY)
@@ -1076,8 +1076,6 @@ function start_oem_blackouts_DEST_DB(){
 if [ ! -z $OEMTARGET_DATABASE ]; then
   echo -e "\n*** Starting OEM blackout for database $DEST_SID"
   OEMTARGET_LIST="$OEMTARGET_DATABASE:oracle_database"
-  #emctl start blackout ${SCRIPT_NAME}_${DEST_SID} $EMTARGET_DATABASE:oracle_database
-  #RETURN_STATUS=$?
 else
   echo -e "\n*** No OEM target exists for database $DEST_SID"
   RETURN_STATUS=1
@@ -1086,8 +1084,6 @@ fi
 if [ ! -z $OEMTARGET_LISTENER ]; then
   echo -e "\n*** Starting OEM blackout for database listener $DEST_LSNR"
   OEMTARGET_LIST="$OEMTARGET_LIST $OEMTARGET_LISTENER:oracle_listener"
-  #emctl start blackout ${SCRIPT_NAME}_${DEST_LSNR} $EMTARGET_LISTENER:oracle_listener
-  #RETURN_STATUS=$?
 else
   echo -e "\n*** No OEM target exists for database listener $DEST_LSNR"
   RETURN_STATUS=1
@@ -1104,7 +1100,7 @@ else
   RETURN_STATUS=1
 fi
 
-} # start_oem_blackou_DEST_DBt
+} # start_oem_blackout_DEST_DB
 
 
 function stop_oem_blackouts_DEST_DB(){
