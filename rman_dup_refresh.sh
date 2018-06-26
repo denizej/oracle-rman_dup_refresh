@@ -1,7 +1,7 @@
 #!/bin/bash
 
 USAGE="
-USAGE: `basename $0` <SYSTEM> <SOURCE_ENV> <DEST_ENV> [FUNCTION_TO_EXEC]\n
+USAGE: `basename $0` <SID_PREFIX> <SOURCE_ENV> <DEST_ENV> [FUNCTION_TO_EXEC]\n
 EG: - `basename $0` josh c1 c2\n
 OR: - `basename $0` josh c2 c3\n
 OR: - `basename $0` josh c2 c3 list_all_functions\n
