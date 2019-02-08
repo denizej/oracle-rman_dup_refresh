@@ -5,8 +5,10 @@ function check_if_interactive(){
 # check if running in an interactive session or not
 fd=0
 INTERACTIVE=0
-if [[ -t "$fd" || -p /dev/stdin ]]; then
+if [[ -t "$fd" || -p /dev/stdin ]] && [[ $NO_PROMPT -eq 0 ]]; then
+#if [[ 1 == 1 ]]; then
   # this is interactive
+  echo -e "\n*** interactive session ***"
   INTERACTIVE=1
 else
   echo -e "\n*** non-interactive session ***"
@@ -248,81 +250,46 @@ if [ -r $SYS_DIR/backups/spfile${DEST_SID}.ora_bak_$DATETIME ]; then
   cp -p $SYS_DIR/backups/spfile${DEST_SID}.ora_bak_$DATETIME $ORACLE_HOME/dbs/spfile${DEST_SID}.ora
 fi
 
-if [ $OSVER == "Linux" ]; then
+#if [ $OSVER == "Linux" ]; then
 
-  if [ -d /apps/oracle/admin/${DEST_SID}/adump/ ]; then
+  #if [ -d /apps/oracle/admin/${DEST_SID}/adump/ ]; then
+  if [ -d ${ORACLE_BASE}/${DEST_SID}/adump/ ]; then
     echo -e "\nRemoving old OS audit file directory and contents"
-    rm -rf /apps/oracle/admin/${DEST_SID}/adump/
+    rm -rf ${ORACLE_BASE}/${DEST_SID}/adump/
   fi
 
-  if [ -d /oradata/${DEST_SID} ]; then
-    echo -e "\nRemoving old /oradata/${DEST_SID} directory and any contents"
-    rm -rf /oradata/${DEST_SID}/
-  fi
+  echo -e "\nCreating directory ${ORACLE_BASE}/${DEST_SID}/adump/"
+  mkdir -p ${ORACLE_BASE}/${DEST_SID}/adump/
 
-  if [ -d /redo/${DEST_SID} ]; then
-    echo -e "\nRemoving old /redo/${DEST_SID} directory and any contents"
-    rm -rf /redo/${DEST_SID}/
-  fi
+  #echo -e "\nCreating directory /oradata/${DEST_SID} "
+  #mkdir /oradata/${DEST_SID}/
 
-  if [ -d /archive/${DEST_SID} ]; then
-    echo -e "\nRemoving old /archive/${DEST_SID} directory and any contents"
-    rm -rf /archive/${DEST_SID}/
-  fi
+  #echo -e "\nCreating directory /redo/${DEST_SID} "
+  #mkdir /redo/${DEST_SID}/
 
-  echo -e "\nCreating directory /apps/oracle/admin/${DEST_SID}/adump/"
-  mkdir -p /apps/oracle/admin/${DEST_SID}/adump/
+  #echo -e "\nCreating directory /archive/${DEST_SID} "
+  #mkdir /archive/${DEST_SID}/
 
-  echo -e "\nCreating directory /oradata/${DEST_SID} "
-  mkdir /oradata/${DEST_SID}/
+#  if [ ! -d /backup/${DEST_SID} ]; then
+#    echo -e "\nCreating directory /backup/${DEST_SID} "
+#    mkdir /backup/${DEST_SID}/
+#  fi
 
-  echo -e "\nCreating directory /redo/${DEST_SID} "
-  mkdir /redo/${DEST_SID}/
-
-  echo -e "\nCreating directory /archive/${DEST_SID} "
-  mkdir /archive/${DEST_SID}/
-
-  if [ ! -d /backup/${DEST_SID} ]; then
-    echo -e "\nCreating directory /backup/${DEST_SID} "
-    mkdir /backup/${DEST_SID}/
-  fi
-
-  if [ ! -d /apps/oracle/admin/${DEST_SID}/adump/ ]; then
-    echo "ERROR: could not create directory /apps/oracle/admin/${DEST_SID}/adump/"
+  if [ ! -d ${ORACLE_BASE}/${DEST_SID}/adump/ ]; then
+    echo "ERROR: could not create directory ${ORACLE_BASE}/${DEST_SID}/adump/"
     exit 1
   fi
 
-  if [ ! -d /oradata/${DEST_SID}/ ]; then
-    echo "ERROR: could not create directory /oradata/${DEST_SID}/"
-    exit 1
-  fi
-  if [ ! -d /redo/${DEST_SID}/ ]; then
-    echo "ERROR: could not create directory /redo/${DEST_SID}/"
-    exit 1
-  fi
-  if [ ! -d /archive/${DEST_SID}/ ]; then
-    echo "ERROR: could not create directory /archive/${DEST_SID}/"
-    exit 1
-  fi
-  if [ ! -d /backup/${DEST_SID}/ ]; then
-    echo "ERROR: could not create directory /backup/${DEST_SID}/"
-    exit 1
-  fi
+  #if [ ! -d /oradata/${DEST_SID}/ ]; then
+    #echo "ERROR: could not create directory /oradata/${DEST_SID}/"
+    #exit 1
+  #fi
+#  if [ ! -d /backup/${DEST_SID}/ ]; then
+#    echo "ERROR: could not create directory /backup/${DEST_SID}/"
+#    exit 1
+#  fi
 
-else
-
-  if [ -d /local/apps/oracle/admin/${DEST_SID}/adump/ ]; then
-    echo -e "\nRemoving old OS audit file directory and contents"
-    rm -rf /apps/oracle/admin/${DEST_SID}/adump/
-    mkdir -p /local/apps/oracle/admin/${DEST_SID}/adump/
-  fi
-
-  if [ ! -d /local/apps/oracle/admin/${DEST_SID}/adump/ ]; then
-    echo "ERROR: could not create directory /local/apps/oracle/admin/${DEST_SID}/adump/"
-    exit 1
-  fi
-
-fi
+#fi
 
 } # drop_DEST_DB
 
@@ -431,6 +398,43 @@ ERMAN
 RETURN_STATUS=$?
 
 } # do_rman_dup_from_active_to_DEST_DB
+
+function do_rman_dup_from_active_to_DEST_DB_12c(){
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv  > /dev/null
+
+if [ -z $RMAN_SECTION_SIZE ]; then
+  RMAN_SECTION_SIZE=10G
+fi
+
+echo -e "\n*** Starting RMAN Duplication from active $SOURCE_SID to $DEST_SID ***"
+#echo TNS_ADMIN = $TNS_ADMIN
+
+rman trace=$RMAN_LOG_FILE << ERMAN
+
+connect target $RMAN_CONNECT_TARGET_STR ;
+connect auxiliary $RMAN_CONNECT_AUX_STR ;
+
+run {
+
+CONFIGURE DEVICE TYPE DISK PARALLELISM $RMAN_PARALLELISM ;
+
+duplicate target database to $DEST_SID
+from active database
+section size $RMAN_SECTION_SIZE
+# NOTE: only uncomment the line below if required and the new DEST_DB (RMAN auxiliary) is on a host different to the SOURCE_DB (RMAN target)
+#nofilenamecheck
+;
+}
+
+exit;
+
+ERMAN
+
+RETURN_STATUS=$?
+
+} # do_rman_dup_from_active_to_DEST_DB_12c
 
 
 function disable_archive_log_mode_DEST_DB(){
@@ -607,13 +611,13 @@ export ORACLE_SID=$DEST_SID
 
 echo -e "\n*** Settting the ADR purge polices for $DEST_SID database and listener ***"
 
-ADR_HOME_DB=`$ORACLE_HOME/bin/adrci exec="show home"|grep -i rdbms'/'${DEST_SID}'/'${DEST_SID}$`
-ADR_HOME_LSNR=`$ORACLE_HOME/bin/adrci exec="show home"|grep -i listener_${DEST_SID}$`
+ADR_HOME_DB=`adrci exec="show home"|grep -i rdbms'/'${DEST_SID}'/'${DEST_SID}$`
+ADR_HOME_LSNR=`adrci exec="show home"|grep -i listener_${DEST_SID}$`
 
 #echo ADR_HOME_DB=$ADR_HOME_DB
 #echo ADR_HOME_LSNR=$ADR_HOME_LSNR
 
-$ORACLE_HOME/bin/adrci << EADR
+adrci << EADR
 set home $ADR_HOME_DB
 show control
 set control (SHORTP_POLICY = $DEST_ADR_SHORTP_POLICY)
@@ -924,7 +928,7 @@ col DIRECTORY_PATH for a60
 col DIRECTORY_PATH_BEFORE for a60
 col DIRECTORY_PATH_AFTER for a60
 select OWNER,DIRECTORY_NAME,DIRECTORY_PATH DIRECTORY_PATH_BEFORE from dba_directories where DIRECTORY_NAME='DATA_PUMP_DIR';
-create or replace directory DATA_PUMP_DIR as '/apps/oracle/admin/&DEST_SID/dpdump/';
+create or replace directory DATA_PUMP_DIR as '$ORACLE_BASE/admin/&DEST_SID/dpdump/';
 select OWNER,DIRECTORY_NAME,DIRECTORY_PATH DIRECTORY_PATH_AFTER from dba_directories where DIRECTORY_NAME='DATA_PUMP_DIR';
 exit;
 ESQL
@@ -962,6 +966,7 @@ COLUMN p_LOWER_ENV    NEW_VALUE LOWER_ENV
 select lower('&DEST_ENV') p_LOWER_ENV from dual;
 
 -- read in the variable DEFINITIONS for the DEST_SID 
+-- and also execute any additional script it calls
 @$POST_DB_REFRESH_SCRIPT_DEF_FILE
 
 set echo on
@@ -1076,6 +1081,8 @@ function start_oem_blackouts_DEST_DB(){
 if [ ! -z $OEMTARGET_DATABASE ]; then
   echo -e "\n*** Starting OEM blackout for database $DEST_SID"
   OEMTARGET_LIST="$OEMTARGET_DATABASE:oracle_database"
+  #emctl start blackout ${SCRIPT_NAME}_${DEST_SID} $EMTARGET_DATABASE:oracle_database
+  #RETURN_STATUS=$?
 else
   echo -e "\n*** No OEM target exists for database $DEST_SID"
   RETURN_STATUS=1
@@ -1084,6 +1091,8 @@ fi
 if [ ! -z $OEMTARGET_LISTENER ]; then
   echo -e "\n*** Starting OEM blackout for database listener $DEST_LSNR"
   OEMTARGET_LIST="$OEMTARGET_LIST $OEMTARGET_LISTENER:oracle_listener"
+  #emctl start blackout ${SCRIPT_NAME}_${DEST_LSNR} $EMTARGET_LISTENER:oracle_listener
+  #RETURN_STATUS=$?
 else
   echo -e "\n*** No OEM target exists for database listener $DEST_LSNR"
   RETURN_STATUS=1
@@ -1100,7 +1109,7 @@ else
   RETURN_STATUS=1
 fi
 
-} # start_oem_blackout_DEST_DB
+} # start_oem_blackou_DEST_DBt
 
 
 function stop_oem_blackouts_DEST_DB(){
@@ -1116,7 +1125,23 @@ else
   emctl status blackout
 fi
 
-} # stop_oem_blackou_DEST_DBt
+} # stop_oem_blackouts_DEST_DB
+
+
+function do_rman_full_backup_DEST_DB(){
+#
+echo -e "\n*** Perform a full cold backup of destination database ***"
+echo
+
+export ORACLE_SID=$DEST_SID
+. /usr/local/bin/oraenv > /dev/null
+
+echo -e "$RMAN_BACKUP_CMD\n\n"
+$RMAN_BACKUP_CMD
+RETURN_STATUS=$?
+
+} # do_rman_full_backup_DEST_DB
+
 
 
 
@@ -1173,9 +1198,8 @@ else
 fi
 
 if [ "$OSVER" == "SunOS" ]; then
-  unix2dos $MAIN_LOG_FILE $MAIN_LOG_FILE
-  (cat $RESULTS_LOG_FILE; uuencode $MAIN_LOG_FILE `basename $MAIN_LOG_FILE`) | mailx -s "$SUBJECT - results summary with main log file attached" $EMAIL_ADDRESS_LIST  
-  dos2unix $MAIN_LOG_FILE $MAIN_LOG_FILE
+  (cat $RESULTS_LOG_FILE; uuencode $MAIN_LOG_FILE `basename $MAIN_LOG_FILE`) | mailx -s "$SUBJECT - results summary with main log file attached" $EMAIL_ADDRESS_LIST
+  #uuencode $MAIN_LOG_FILE `basename $MAIN_LOG_FILE` | mailx -s "$SUBJECT - main log file" $EMAIL_ADDRESS_LIST
 else
   cat $RESULTS_LOG_FILE | mailx -s "$SUBJECT - results summary with main log file attached" -a $MAIN_LOG_FILE $EMAIL_ADDRESS_LIST
 fi
