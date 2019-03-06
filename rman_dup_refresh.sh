@@ -8,15 +8,15 @@ NO_PROMPT=0
 function usage()
 {
   echo
-  echo "Usage: $(basename $1) [-help|-h] [-debug] [-noPromopt] {-system=SYSTEM} {-source_env=SOURCE_ENV} {-dest_env=DEST_ENV} [-func=FUNCTION_TO_EXEC]"
+  echo "Usage: $(basename $1) -system=\$SYSTEM -source_env=\$SOURCE_ENV -dest_env=\$DEST_ENV [-func=\$FUNCTION_TO_EXEC] [-help|-h] [-debug] [-noPrompt]" 
   echo "Where:"
-  echo "  -help|-h         - Optional: Show this usage"
-  echo "  -debug           - Optional: (default is off)"
-  echo "  -noPrompt        - Optional: Setting this option will run with no prompts to the user (default is to prompt if an interactive session)"
   echo "  -system          - Required: Name of the system that forms the common prefix of the database SID"
   echo "  -source_env      - Required: Name of the source environment that forms the suffix of the database SID"
   echo "  -dest_env        - Required: Name of the destination environment that forms the suffix of the database SID"
   echo "  -func            - Optional: Name of a function to execute"
+  echo "  -noPrompt        - Optional: Setting this option will run with no prompts to the user (default is to prompt if an interactive session)"
+  echo "  -debug           - Optional: (default is off)"
+  echo "  -help|-h         - Optional: Show this usage"
 } # function usage
 
 # check inputs

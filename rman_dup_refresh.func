@@ -424,7 +424,7 @@ duplicate target database to $DEST_SID
 from active database
 section size $RMAN_SECTION_SIZE
 # NOTE: only uncomment the line below if required and the new DEST_DB (RMAN auxiliary) is on a host different to the SOURCE_DB (RMAN target)
-#nofilenamecheck
+nofilenamecheck
 ;
 }
 
